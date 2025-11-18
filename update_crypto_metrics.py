@@ -5,7 +5,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 # --- 全域設定 ---
-API_DELAY = 5   # 每次 API 呼叫之間的延遲秒數
+API_DELAY = 5   # API 呼叫延遲
 
 # --- Google Sheets 設置 ---
 SHEET_KEY = "1XRLTnE56zLPVf__AwQfXvJ5FOkmt9fegjbpwaPhYuSQ"
@@ -112,7 +112,58 @@ def ensure_header():
         sheet.insert_row(HEADER_ROW, 1)
         sheet.freeze(rows=1)
 
-# --- 更新 Google Sheet (含降冪排序) ---
+# --- 更新 Google Sheet (先排序 -> 再更新) ---
 def update_sheet_data():
     now_tw = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=8)))
-    today = now
+    today = now_tw.strftime("%Y-%m-%d")
+    exec_time_tw = now_tw.strftime("%Y-%m-%d %H:%M:%S (Taiwan)")
+
+    # --- 步驟 1: 先進行排序 (降冪：最新的在上面) ---
+    # 這樣可以確保資料順序正確，且如果今天是新的一天，我們可以直接插在第2行
+    total_rows = len(sheet.get_all_values())
+    if total_rows > 1:
+        print("Pre-sorting sheet by Date (Descending)...")
+        try:
+            sheet.sort((1, 'des'), range=f'A2:G{total_rows}')
+        except Exception as e:
+            print(f"Sort warning: {e}")
+    
+    # --- 步驟 2: 排序後，重新讀取所有日期 ---
+    # 必須在 sort 之後讀，這樣 index 才是對的
+    dates = sheet.col_values(1) 
+    
+    # --- 步驟 3: 檢查與更新/新增 ---
+    if today in dates:
+        # === 更新模式 (Update) ===
+        row_index = dates.index(today) + 1 
+        print(f"Date {today} found at row {row_index}. Updating...")
+        
+        current_row = sheet.row_values(row_index)
+        # 補齊長度防錯
+        while len(current_row) < 7:
+            current_row.append("N/A")
+            
+        new_row = current_row[:]
+
+        # 依序檢查 N/A 並更新
+        if new_row[1] == "N/A":
+            val = fetch_cfgi(); 
+            if val is not None: new_row[1] = str(val)
+            time.sleep(API_DELAY)
+
+        if new_row[2] == "N/A":
+            val = fetch_btc_d(); 
+            if val is not None: new_row[2] = str(val)
+            time.sleep(API_DELAY)
+
+        if new_row[3] == "N/A":
+            val = fetch_open_interest(); 
+            if val is not None: new_row[3] = str(val)
+            time.sleep(API_DELAY)
+
+        if new_row[4] == "N/A":
+            val = fetch_funding_rate(); 
+            if val is not None: new_row[4] = str(val)
+            time.sleep(API_DELAY)
+
+        if new_row[5] ==
