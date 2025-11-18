@@ -114,30 +114,66 @@ def update_sheet_data():
     today = now_tw.strftime("%Y-%m-%d")
     exec_time_tw = now_tw.strftime("%Y-%m-%d %H:%M:%S (Taiwan)")
 
-    cfgi = fetch_cfgi(); time.sleep(2)
-    btc_d = fetch_btc_d(); time.sleep(2)
-    oi = fetch_open_interest(); time.sleep(2)
-    fr = fetch_funding_rate(); time.sleep(2)
+    all_rows = sheet.get_all_values()
+    last_row = all_rows[-1] if all_rows else []
+    last_date = last_row[0] if last_row else None
 
-    # 三家交易所 L/S，優先順序：Binance > OKX > Bybit
-    ls_binance = fetch_long_short_binance(); time.sleep(2)
-    ls_okx = fetch_long_short_okx(); time.sleep(2)
-    ls_bybit = fetch_long_short_bybit()
+    # 如果是新的一天 → 新增一列完整紀錄
+    if last_date != today:
+        cfgi = fetch_cfgi(); time.sleep(2)
+        btc_d = fetch_btc_d(); time.sleep(2)
+        oi = fetch_open_interest(); time.sleep(2)
+        fr = fetch_funding_rate(); time.sleep(2)
 
-    ls_final = ls_binance or ls_okx or ls_bybit
+        ls_binance = fetch_long_short_binance(); time.sleep(2)
+        ls_okx = fetch_long_short_okx(); time.sleep(2)
+        ls_bybit = fetch_long_short_bybit()
+        ls_final = ls_binance or ls_okx or ls_bybit
 
-    row = [
-        safe_value(today),
-        safe_value(cfgi),
-        safe_value(btc_d),
-        safe_value(oi),
-        safe_value(fr),
-        safe_value(ls_final),
-        safe_value(exec_time_tw)
-    ]
+        row = [
+            safe_value(today),
+            safe_value(cfgi),
+            safe_value(btc_d),
+            safe_value(oi),
+            safe_value(fr),
+            safe_value(ls_final),
+            safe_value(exec_time_tw)
+        ]
+        print("New day row:", row)
+        sheet.append_row(row, value_input_option="USER_ENTERED")
 
-    print("Row before append:", row)
-    sheet.append_row(row, value_input_option="USER_ENTERED")
+    else:
+        # 同一天 → 只更新 N/A 欄位
+        new_row = last_row[:]
+
+        if last_row[1] == "N/A":
+            val = fetch_cfgi()
+            if val is not None: new_row[1] = str(val)
+
+        if last_row[2] == "N/A":
+            val = fetch_btc_d()
+            if val is not None: new_row[2] = str(val)
+
+        if last_row[3] == "N/A":
+            val = fetch_open_interest()
+            if val is not None: new_row[3] = str(val)
+
+        if last_row[4] == "N/A":
+            val = fetch_funding_rate()
+            if val is not None: new_row[4] = str(val)
+
+        if last_row[5] == "N/A":
+            ls_binance = fetch_long_short_binance(); time.sleep(2)
+            ls_okx = fetch_long_short_okx(); time.sleep(2)
+            ls_bybit = fetch_long_short_bybit()
+            ls_final = ls_binance or ls_okx or ls_bybit
+            if ls_final is not None: new_row[5] = str(ls_final)
+
+        # 更新執行時間（永遠更新）
+        new_row[6] = exec_time_tw
+
+        print("Same day row updated:", new_row)
+        sheet.update(f"A{len(all_rows)}:G{len(all_rows)}", [new_row])
 
 if __name__ == "__main__":
     ensure_header()
