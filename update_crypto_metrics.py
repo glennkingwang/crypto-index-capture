@@ -5,48 +5,42 @@ from oauth2client.service_account import ServiceAccountCredentials
 import time
 
 # --- Google Sheets 設置 ---
+SHEET_KEY = "你的表單ID"   # 請替換成你的 Google Sheet ID
+HEADER_ROW = ["Date", "CFGI", "BTC-D", "Long/Short", "Open Interest", "Funding Rate", "Exec Time"]
+
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
 client = gspread.authorize(creds)
-sheet = client.open_by_key("1XRLTnE56zLPVf__AwQfXvJ5FOkmt9fegjbpwaPhYuSQ").sheet1
+sheet = client.open_by_key(SHEET_KEY).sheet1
 
-# --- 標題行 ---
-HEADER_ROW = ["Date", "CFGI", "BTC-D", "Long/Short", "Open Interest", "Funding Rate", "Exec Time"]
+# --- 安全值轉換，避免 None 變成空白 ---
+def safe_value(val):
+    return val if val is not None else "N/A"
 
 # --- API 函數 ---
-
 def fetch_cfgi():
-    """恐懼與貪婪指數"""
     try:
         r = requests.get("https://api.alternative.me/fng/", timeout=10)
         r.raise_for_status()
-        data = r.json().get('data')
-        if data and len(data) > 0:
-            return int(data[0]['value'])
-        else:
-            print("Error fetch_cfgi: API returned empty or invalid data.")
-            return None
+        data = r.json().get("data", [])
+        if data:
+            return int(data[0]["value"])
     except Exception as e:
-        print(f"Error in fetch_cfgi: {e}")
-        return None
+        print("fetch_cfgi error:", e)
+    return None
 
 def fetch_btc_d():
-    """BTC 市佔率 (CoinGecko)"""
     try:
         r = requests.get("https://api.coingecko.com/api/v3/global", timeout=10)
         r.raise_for_status()
-        btc_percentage = r.json().get('data', {}).get('market_cap_percentage', {}).get('btc')
-        if btc_percentage is not None:
-            return round(btc_percentage, 2)
-        else:
-            print("Error fetch_btc_d: Could not parse BTC dominance.")
-            return None
+        btc = r.json().get("data", {}).get("market_cap_percentage", {}).get("btc")
+        if btc is not None:
+            return round(btc, 2)
     except Exception as e:
-        print(f"Error in fetch_btc_d: {e}")
-        return None
+        print("fetch_btc_d error:", e)
+    return None
 
 def fetch_long_short_ratio():
-    """多空比 (Binance Futures)"""
     try:
         time.sleep(1)
         r = requests.get(
@@ -55,85 +49,78 @@ def fetch_long_short_ratio():
         )
         r.raise_for_status()
         data = r.json()
-        if isinstance(data, list) and len(data) > 0:
-            return round(float(data[0]['longShortRatio']), 2)
-        else:
-            print("Error fetch_long_short_ratio: Response =", data)
-            return None
+        if isinstance(data, list) and data:
+            return round(float(data[0]["longShortRatio"]), 2)
     except Exception as e:
-        print(f"Error in fetch_long_short_ratio: {e}")
-        return None
+        print("fetch_long_short_ratio error:", e)
+    return None
 
 def fetch_open_interest():
-    """未平倉量 (Binance Futures)"""
     try:
         time.sleep(1)
         r = requests.get("https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT", timeout=10)
         r.raise_for_status()
         data = r.json()
-        if 'openInterest' in data:
-            return round(float(data['openInterest']), 2)
-        else:
-            print("Error fetch_open_interest: Response =", data)
-            return None
+        if "openInterest" in data:
+            return round(float(data["openInterest"]), 2)
     except Exception as e:
-        print(f"Error in fetch_open_interest: {e}")
-        return None
+        print("fetch_open_interest error:", e)
+    return None
 
 def fetch_funding_rate():
-    """資金費率 (Binance Futures)"""
     try:
         time.sleep(1)
         r = requests.get("https://fapi.binance.com/fapi/v1/fundingRate?symbol=BTCUSDT&limit=1", timeout=10)
         r.raise_for_status()
         data = r.json()
-        if isinstance(data, list) and len(data) > 0:
-            return round(float(data[0]['fundingRate']) * 100, 4)
-        else:
-            print("Error fetch_funding_rate: Response =", data)
-            return None
+        if isinstance(data, list) and data:
+            return round(float(data[0]["fundingRate"]) * 100, 4)
     except Exception as e:
-        print(f"Error in fetch_funding_rate: {e}")
-        return None
+        print("fetch_funding_rate error:", e)
+    return None
 
 # --- 更新 Google Sheet ---
+def ensure_header():
+    try:
+        current = sheet.row_values(1)
+        if current != HEADER_ROW:
+            print("Header missing/incorrect. Inserting...")
+            sheet.insert_row(HEADER_ROW, 1)
+    except Exception as e:
+        print("Header check error:", e)
+        sheet.insert_row(HEADER_ROW, 1)
+
 def update_sheet_data():
     now = datetime.utcnow()
-    today_date = now.strftime("%Y-%m-%d")
+    today = now.strftime("%Y-%m-%d")
     exec_time = now.strftime("%H:%M:%S (UTC)")
 
-    print(f"Fetching data at {exec_time}...")
+    # 抓取數據
+    cfgi = fetch_cfgi()
+    btc_d = fetch_btc_d()
+    ls = fetch_long_short_ratio()
+    oi = fetch_open_interest()
+    fr = fetch_funding_rate()
 
+    # 組合 row，確保不會空白
     row = [
-        today_date,
-        fetch_cfgi(),
-        fetch_btc_d(),
-        fetch_long_short_ratio(),
-        fetch_open_interest(),
-        fetch_funding_rate(),
+        today,
+        safe_value(cfgi),
+        safe_value(btc_d),
+        safe_value(ls),
+        safe_value(oi),
+        safe_value(fr),
         exec_time
     ]
 
+    print("Row to append:", row)  # 寫入前先確認
     try:
-        sheet.append_row(row)
-        print(f"--- {today_date} metrics updated successfully ---")
-        print(f"Data: {row}")
+        sheet.append_row(row, value_input_option="USER_ENTERED")
+        print(f"--- {today} metrics updated successfully ---")
     except Exception as e:
-        print(f"Error: Failed to append row. Error: {e}")
-        print(f"Data that failed: {row}")
+        print("Append error:", e)
 
 # --- 主程式 ---
 if __name__ == "__main__":
-    try:
-        current_header = sheet.row_values(1)
-        if current_header != HEADER_ROW:
-            print("Header not found or incorrect. Inserting new header...")
-            sheet.insert_row(HEADER_ROW, 1)
-            print("Header inserted.")
-        else:
-            print("Header is correct. Skipping insertion.")
-    except Exception as e:
-        print("Error checking header:", e)
-        sheet.insert_row(HEADER_ROW, 1)
-
+    ensure_header()
     update_sheet_data()
