@@ -2,8 +2,6 @@ import requests
 from datetime import datetime
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import time
 
 # --- Google Sheets 設置 ---
 SHEET_KEY = "1XRLTnE56zLPVf__AwQfXvJ5FOkmt9fegjbpwaPhYuSQ"   # 你的表單 ID
@@ -93,37 +91,25 @@ def update_sheet_data():
     today = now.strftime("%Y-%m-%d")
     exec_time = now.strftime("%H:%M:%S (UTC)")
 
-    # 並行抓取數據
-    tasks = {
-        "CFGI": fetch_cfgi,
-        "BTC-D": fetch_btc_d,
-        "Long/Short": fetch_long_short_ratio,
-        "Open Interest": fetch_open_interest,
-        "Funding Rate": fetch_funding_rate,
-    }
+    # 抓取數據
+    cfgi = fetch_cfgi()
+    btc_d = fetch_btc_d()
+    ls = fetch_long_short_ratio()
+    oi = fetch_open_interest()
+    fr = fetch_funding_rate()
 
-    results = {}
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        future_map = {executor.submit(func): name for name, func in tasks.items()}
-        for future in as_completed(future_map):
-            name = future_map[future]
-            try:
-                results[name] = future.result()
-            except Exception as e:
-                print(f"{name} future error:", e)
-                results[name] = None
-
+    # 組合 row，確保不會空白
     row = [
         today,
-        safe_value(results.get("CFGI")),
-        safe_value(results.get("BTC-D")),
-        safe_value(results.get("Long/Short")),
-        safe_value(results.get("Open Interest")),
-        safe_value(results.get("Funding Rate")),
+        safe_value(cfgi),
+        safe_value(btc_d),
+        safe_value(ls),
+        safe_value(oi),
+        safe_value(fr),
         exec_time
     ]
 
-    print("Row to append:", row)
+    print("Row to append:", row)  # 寫入前先確認
     try:
         sheet.append_row(row, value_input_option="USER_ENTERED")
         print(f"--- {today} metrics updated successfully ---")
