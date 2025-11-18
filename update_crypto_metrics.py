@@ -1,5 +1,5 @@
 import requests
-from datetime import datetime, UTC, timedelta
+from datetime import datetime, timedelta, timezone
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
@@ -14,7 +14,7 @@ sheet = client.open_by_key(SHEET_KEY).worksheet("工作表1")
 def safe_value(val):
     return str(val) if val is not None else "N/A"
 
-# --- API 函數 (略，保持你原本的 fetch_cfgi / fetch_btc_d / fetch_long_short_ratio / fetch_open_interest / fetch_funding_rate) ---
+# --- API 函數 (保持原本的 fetch_cfgi / fetch_btc_d / fetch_long_short_ratio / fetch_open_interest / fetch_funding_rate) ---
 
 def ensure_header():
     current = sheet.row_values(1)
@@ -27,8 +27,8 @@ def ensure_header():
 def update_sheet_data():
     print("開始更新 Google Sheet...")
 
-    # ✅ 新版 datetime 寫法
-    now_utc = datetime.now(UTC)  
+    # ✅ 兼容 Python 3.10 的寫法
+    now_utc = datetime.now(timezone.utc)  
     now_tw = now_utc + timedelta(hours=8)  # 台灣時間 UTC+8
 
     today = now_utc.strftime("%Y-%m-%d")
