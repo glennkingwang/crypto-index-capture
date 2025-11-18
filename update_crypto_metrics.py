@@ -4,6 +4,9 @@ from datetime import datetime, timezone, timedelta
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
+# --- 全域設定 ---
+API_DELAY = 5   # 每次 API 呼叫之間的延遲秒數，修改這裡即可
+
 # --- Google Sheets 設置 ---
 SHEET_KEY = "1XRLTnE56zLPVf__AwQfXvJ5FOkmt9fegjbpwaPhYuSQ"
 HEADER_ROW = ["Date", "CFGI", "BTC-D", "Open Interest", "Funding Rate", "L/S value", "Exec Time (Taiwan)"]
@@ -120,13 +123,13 @@ def update_sheet_data():
 
     # 如果是新的一天 → 新增一列完整紀錄
     if last_date != today:
-        cfgi = fetch_cfgi(); time.sleep(2)
-        btc_d = fetch_btc_d(); time.sleep(2)
-        oi = fetch_open_interest(); time.sleep(2)
-        fr = fetch_funding_rate(); time.sleep(2)
+        cfgi = fetch_cfgi(); time.sleep(API_DELAY)
+        btc_d = fetch_btc_d(); time.sleep(API_DELAY)
+        oi = fetch_open_interest(); time.sleep(API_DELAY)
+        fr = fetch_funding_rate(); time.sleep(API_DELAY)
 
-        ls_binance = fetch_long_short_binance(); time.sleep(2)
-        ls_okx = fetch_long_short_okx(); time.sleep(2)
+        ls_binance = fetch_long_short_binance(); time.sleep(API_DELAY)
+        ls_okx = fetch_long_short_okx(); time.sleep(API_DELAY)
         ls_bybit = fetch_long_short_bybit()
         ls_final = ls_binance or ls_okx or ls_bybit
 
@@ -163,8 +166,8 @@ def update_sheet_data():
             if val is not None: new_row[4] = str(val)
 
         if last_row[5] == "N/A":
-            ls_binance = fetch_long_short_binance(); time.sleep(2)
-            ls_okx = fetch_long_short_okx(); time.sleep(2)
+            ls_binance = fetch_long_short_binance(); time.sleep(API_DELAY)
+            ls_okx = fetch_long_short_okx(); time.sleep(API_DELAY)
             ls_bybit = fetch_long_short_bybit()
             ls_final = ls_binance or ls_okx or ls_bybit
             if ls_final is not None: new_row[5] = str(ls_final)
@@ -173,7 +176,7 @@ def update_sheet_data():
         new_row[6] = exec_time_tw
 
         print("Same day row updated:", new_row)
-        sheet.update(f"A{len(all_rows)}:G{len(all_rows)}", [new_row])
+        sheet.update(values=[new_row], range_name=f"A{len(all_rows)}:G{len(all_rows)}")
 
 if __name__ == "__main__":
     ensure_header()
