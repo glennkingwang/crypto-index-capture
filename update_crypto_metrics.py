@@ -6,7 +6,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 # --- Google Sheets 設置 ---
 SHEET_KEY = "1XRLTnE56zLPVf__AwQfXvJ5FOkmt9fegjbpwaPhYuSQ"
-HEADER_ROW = ["Date", "CFGI", "BTC-D", "Open Interest", "Funding Rate", "L/S (Binance)", "Exec Time (Taiwan)"]
+HEADER_ROW = ["Date", "CFGI", "BTC-D", "Open Interest", "Funding Rate", "L/S value", "Exec Time (Taiwan)"]
 
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
@@ -59,6 +59,7 @@ def fetch_funding_rate():
         print("fetch_funding_rate error:", e)
         return None
 
+# --- L/S 三家交易所 ---
 def fetch_long_short_binance():
     try:
         url = "https://fapi.binance.com/futures/data/topLongShortAccountRatio"
@@ -73,6 +74,34 @@ def fetch_long_short_binance():
         print("fetch_long_short_binance error:", e)
         return None
 
+def fetch_long_short_okx():
+    try:
+        url = "https://www.okx.com/api/v5/rubik/stat/contracts-long-short-account-ratio"
+        params = {"ccy": "BTC", "period": "5m"}
+        r = requests.get(url, params=params, timeout=5)
+        r.raise_for_status()
+        data = r.json().get("data", [])
+        if isinstance(data, list) and data:
+            return round(float(data[0]["ratio"]), 2)
+        return None
+    except Exception as e:
+        print("fetch_long_short_okx error:", e)
+        return None
+
+def fetch_long_short_bybit():
+    try:
+        url = "https://api.bybit.com/v5/market/account-ratio"
+        params = {"symbol": "BTCUSDT", "period": "5m"}
+        r = requests.get(url, params=params, timeout=5)
+        r.raise_for_status()
+        data = r.json().get("result", {}).get("list", [])
+        if isinstance(data, list) and data:
+            return round(float(data[0]["longShortRatio"]), 2)
+        return None
+    except Exception as e:
+        print("fetch_long_short_bybit error:", e)
+        return None
+
 # --- Header 檢查 ---
 def ensure_header():
     current = sheet.row_values(1)
@@ -85,19 +114,17 @@ def update_sheet_data():
     today = now_tw.strftime("%Y-%m-%d")
     exec_time_tw = now_tw.strftime("%Y-%m-%d %H:%M:%S (Taiwan)")
 
-    cfgi = fetch_cfgi()
-    time.sleep(2)
+    cfgi = fetch_cfgi(); time.sleep(2)
+    btc_d = fetch_btc_d(); time.sleep(2)
+    oi = fetch_open_interest(); time.sleep(2)
+    fr = fetch_funding_rate(); time.sleep(2)
 
-    btc_d = fetch_btc_d()
-    time.sleep(2)
+    # 三家交易所 L/S，優先順序：Binance > OKX > Bybit
+    ls_binance = fetch_long_short_binance(); time.sleep(2)
+    ls_okx = fetch_long_short_okx(); time.sleep(2)
+    ls_bybit = fetch_long_short_bybit()
 
-    oi = fetch_open_interest()
-    time.sleep(2)
-
-    fr = fetch_funding_rate()
-    time.sleep(2)
-
-    ls_binance = fetch_long_short_binance()
+    ls_final = ls_binance or ls_okx or ls_bybit
 
     row = [
         safe_value(today),
@@ -105,7 +132,7 @@ def update_sheet_data():
         safe_value(btc_d),
         safe_value(oi),
         safe_value(fr),
-        safe_value(ls_binance),
+        safe_value(ls_final),
         safe_value(exec_time_tw)
     ]
 
