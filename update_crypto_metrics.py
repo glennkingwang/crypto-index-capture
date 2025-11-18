@@ -114,4 +114,92 @@ def ensure_header():
 
 # --- 更新 Google Sheet (先排序 -> 再更新) ---
 def update_sheet_data():
-    now_tw = datetime.now(timezone.utc).astimezone(timezone
+    now_tw = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=8)))
+    today = now_tw.strftime("%Y-%m-%d")
+    exec_time_tw = now_tw.strftime("%Y-%m-%d %H:%M:%S (Taiwan)")
+
+    # --- 步驟 1: 先進行排序 (降冪：最新的在上面) ---
+    total_rows = len(sheet.get_all_values())
+    if total_rows > 1:
+        print("Pre-sorting sheet by Date (Descending)...")
+        try:
+            sheet.sort((1, 'des'), range=f'A2:G{total_rows}')
+        except Exception as e:
+            print(f"Sort warning: {e}")
+    
+    # --- 步驟 2: 排序後，重新讀取所有日期 ---
+    dates = sheet.col_values(1) 
+    
+    # --- 步驟 3: 檢查與更新/新增 ---
+    if today in dates:
+        # === 更新模式 (Update) ===
+        row_index = dates.index(today) + 1 
+        print(f"Date {today} found at row {row_index}. Updating...")
+        
+        current_row = sheet.row_values(row_index)
+        while len(current_row) < 7:
+            current_row.append("N/A")
+            
+        new_row = current_row[:]
+
+        if new_row[1] == "N/A":
+            val = fetch_cfgi(); 
+            if val is not None: new_row[1] = str(val)
+            time.sleep(API_DELAY)
+
+        if new_row[2] == "N/A":
+            val = fetch_btc_d(); 
+            if val is not None: new_row[2] = str(val)
+            time.sleep(API_DELAY)
+
+        if new_row[3] == "N/A":
+            val = fetch_open_interest(); 
+            if val is not None: new_row[3] = str(val)
+            time.sleep(API_DELAY)
+
+        if new_row[4] == "N/A":
+            val = fetch_funding_rate(); 
+            if val is not None: new_row[4] = str(val)
+            time.sleep(API_DELAY)
+
+        if new_row[5] == "N/A":
+            ls_binance = fetch_long_short_binance(); time.sleep(API_DELAY)
+            ls_okx = fetch_long_short_okx(); time.sleep(API_DELAY)
+            ls_bybit = fetch_long_short_bybit()
+            ls_final = ls_binance or ls_okx or ls_bybit
+            if ls_final is not None: new_row[5] = str(ls_final)
+
+        new_row[6] = exec_time_tw
+        sheet.update(values=[new_row], range_name=f"A{row_index}:G{row_index}")
+        print("Row updated.")
+
+    else:
+        # === 新增模式 (Insert) ===
+        print(f"Date {today} not found. Inserting new row at top...")
+        
+        cfgi = fetch_cfgi(); time.sleep(API_DELAY)
+        btc_d = fetch_btc_d(); time.sleep(API_DELAY)
+        oi = fetch_open_interest(); time.sleep(API_DELAY)
+        fr = fetch_funding_rate(); time.sleep(API_DELAY)
+
+        ls_binance = fetch_long_short_binance(); time.sleep(API_DELAY)
+        ls_okx = fetch_long_short_okx(); time.sleep(API_DELAY)
+        ls_bybit = fetch_long_short_bybit()
+        ls_final = ls_binance or ls_okx or ls_bybit
+
+        row = [
+            safe_value(today),
+            safe_value(cfgi),
+            safe_value(btc_d),
+            safe_value(oi),
+            safe_value(fr),
+            safe_value(ls_final),
+            safe_value(exec_time_tw)
+        ]
+        
+        sheet.insert_row(row, index=2, value_input_option="USER_ENTERED")
+        print("New row inserted at Row 2.")
+
+if __name__ == "__main__":
+    ensure_header()
+    update_sheet_data()
