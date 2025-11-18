@@ -3,6 +3,7 @@ from datetime import datetime
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
+# --- Google Sheets 設置 ---
 SHEET_KEY = "1XRLTnE56zLPVf__AwQfXvJ5FOkmt9fegjbpwaPhYuSQ"
 HEADER_ROW = ["Date", "CFGI", "BTC-D", "Long/Short", "Open Interest", "Funding Rate", "Exec Time"]
 
@@ -11,39 +12,73 @@ creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", sco
 client = gspread.authorize(creds)
 sheet = client.open_by_key(SHEET_KEY).worksheet("工作表1")
 
+# --- 強制轉字串，避免 None 或 float 被誤判 ---
 def safe_value(val):
-    return str(val) if val is not None else "N/A"
+    if val is None:
+        return "N/A"
+    return str(val)
 
-def fetch_long_short_ratio():
-    r = requests.get("https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=BTCUSDT&period=1d&limit=1", timeout=5)
-    data = r.json()
-    return round(float(data[0]["longShortRatio"]), 2) if isinstance(data, list) and data else None
-
-def fetch_open_interest():
-    r = requests.get("https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT", timeout=5)
-    data = r.json()
-    return round(float(data["openInterest"]), 2) if "openInterest" in data else None
-
-def fetch_funding_rate():
-    r = requests.get("https://fapi.binance.com/fapi/v1/fundingRate?symbol=BTCUSDT&limit=1", timeout=5)
-    data = r.json()
-    return round(float(data[0]["fundingRate"]) * 100, 4) if isinstance(data, list) and data else None
-
+# --- API 函數 ---
 def fetch_cfgi():
-    r = requests.get("https://api.alternative.me/fng/", timeout=5)
-    data = r.json().get("data", [])
-    return int(data[0]["value"]) if data else None
+    try:
+        r = requests.get("https://api.alternative.me/fng/", timeout=5)
+        r.raise_for_status()
+        data = r.json().get("data", [])
+        return int(data[0]["value"]) if data else None
+    except Exception as e:
+        print("fetch_cfgi error:", e)
+        return None
 
 def fetch_btc_d():
-    r = requests.get("https://api.coingecko.com/api/v3/global", timeout=5)
-    btc = r.json().get("data", {}).get("market_cap_percentage", {}).get("btc")
-    return round(btc, 2) if btc is not None else None
+    try:
+        r = requests.get("https://api.coingecko.com/api/v3/global", timeout=5)
+        r.raise_for_status()
+        btc = r.json().get("data", {}).get("market_cap_percentage", {}).get("btc")
+        return round(btc, 2) if btc is not None else None
+    except Exception as e:
+        print("fetch_btc_d error:", e)
+        return None
 
+def fetch_long_short_ratio():
+    try:
+        r = requests.get(
+            "https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=BTCUSDT&period=1d&limit=1",
+            timeout=5
+        )
+        r.raise_for_status()
+        data = r.json()
+        return round(float(data[0]["longShortRatio"]), 2) if isinstance(data, list) and data else None
+    except Exception as e:
+        print("fetch_long_short_ratio error:", e)
+        return None
+
+def fetch_open_interest():
+    try:
+        r = requests.get("https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT", timeout=5)
+        r.raise_for_status()
+        data = r.json()
+        return round(float(data["openInterest"]), 2) if "openInterest" in data else None
+    except Exception as e:
+        print("fetch_open_interest error:", e)
+        return None
+
+def fetch_funding_rate():
+    try:
+        r = requests.get("https://fapi.binance.com/fapi/v1/fundingRate?symbol=BTCUSDT&limit=1", timeout=5)
+        r.raise_for_status()
+        data = r.json()
+        return round(float(data[0]["fundingRate"]) * 100, 4) if isinstance(data, list) and data else None
+    except Exception as e:
+        print("fetch_funding_rate error:", e)
+        return None
+
+# --- Header 檢查 ---
 def ensure_header():
     current = sheet.row_values(1)
     if current != HEADER_ROW:
         sheet.insert_row(HEADER_ROW, 1)
 
+# --- 更新 Google Sheet ---
 def update_sheet_data():
     now = datetime.utcnow()
     today = now.strftime("%Y-%m-%d")
@@ -56,13 +91,13 @@ def update_sheet_data():
     fr = fetch_funding_rate()
 
     row = [
-        today,
+        safe_value(today),
         safe_value(cfgi),
         safe_value(btc_d),
         safe_value(ls),
         safe_value(oi),
         safe_value(fr),
-        exec_time
+        safe_value(exec_time)
     ]
 
     print("Row before append:", row)  # 確認 D/E/F 是否有值
