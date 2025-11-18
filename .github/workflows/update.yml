@@ -1,0 +1,27 @@
+name: Daily Crypto Metrics to Google Sheets
+
+on:
+  schedule:
+    - cron: '0 1 * * *'  # 每天 UTC+0 01:00 執行
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install requests gspread oauth2client
+
+      - name: Add credentials
+        run: echo "${{ secrets.GSHEETS_CREDENTIALS }}" > credentials.json
+
+      - name: Run update script
+        run: python update_crypto_metrics.py
