@@ -21,7 +21,7 @@ jobs:
           pip install requests gspread oauth2client
 
       - name: Add credentials
-        run: echo "${{ secrets.GSHEETS_CREDENTIALS }}" > credentials.json
+        run: echo '${{ secrets.GSHEETS_CREDENTIALS }}' > credentials.json
 
       - name: Run update script
         run: python update_crypto_metrics.py
