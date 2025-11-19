@@ -5,7 +5,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 # --- 全域設定 ---
-API_DELAY = 5   # API 呼叫延遲
+API_DELAY = 8   # API 呼叫延遲
 
 # --- Google Sheets 設置 ---
 SHEET_KEY = "1XRLTnE56zLPVf__AwQfXvJ5FOkmt9fegjbpwaPhYuSQ"
